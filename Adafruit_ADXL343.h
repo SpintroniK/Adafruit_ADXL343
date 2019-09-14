@@ -63,6 +63,21 @@
     #define ADXL343_REG_DATAZ1              (0x37)    /**< Z-axis data 1 */
     #define ADXL343_REG_FIFO_CTL            (0x38)    /**< FIFO control */
     #define ADXL343_REG_FIFO_STATUS         (0x39)    /**< FIFO status */
+
+    #define ADXL343_FIFO_MODE_BIT           7
+    #define ADXL343_FIFO_MODE_LENGTH        2
+    #define ADXL343_FIFO_TRIGGER_BIT        5
+    #define ADXL343_FIFO_SAMPLES_BIT        4
+    #define ADXL343_FIFO_SAMPLES_LENGTH     5
+
+    #define ADXL343_FIFO_MODE_BYPASS        0b00
+    #define ADXL343_FIFO_MODE_FIFO          0b01
+    #define ADXL343_FIFO_MODE_STREAM        0b10
+    #define ADXL343_FIFO_MODE_TRIGGER       0b11
+
+    #define ADXL343_FIFOSTAT_TRIGGER_BIT    7
+    #define ADXL343_FIFOSTAT_LENGTH_BIT     5
+    #define ADXL343_FIFOSTAT_LENGTH_LENGTH  6
 /*=========================================================================*/
 
 /*=========================================================================
@@ -70,6 +85,8 @@
     -----------------------------------------------------------------------*/
     #define ADXL343_MG2G_MULTIPLIER (0.004)  /**< 4mg per lsb */
 /*=========================================================================*/
+
+
 
 /** Used with register 0x2C (ADXL343_REG_BW_RATE) to set bandwidth */
 typedef enum
@@ -143,6 +160,10 @@ class Adafruit_ADXL343 : public Adafruit_Sensor {
   uint8_t    getDeviceID(void);
   void       writeRegister(uint8_t reg, uint8_t value);
   uint8_t    readRegister(uint8_t reg);
+  bool       readRegisterBit(uint8_t reg, uint8_t bitNumber);
+  uint8_t    readRegisterBits(uint8_t reg, uint8_t offset, uint8_t length);
+  void       writeBitToRegister(uint8_t reg, uint8_t bitNumber, uint8_t value);
+  void       writeBitsToRegister(uint8_t reg, uint8_t offset, uint8_t length, uint8_t value);
   int16_t    read16(uint8_t reg);
 
   bool       enableInterrupts(int_config cfg);
@@ -152,6 +173,23 @@ class Adafruit_ADXL343 : public Adafruit_Sensor {
   int16_t    getX(void);
   int16_t    getY(void);
   int16_t    getZ(void);
+
+  void       getXYZ(int16_t& x, int16_t& y, int16_t& z);
+
+
+  // FIFO_CTL register
+  uint8_t     getFIFOMode();
+  void        setFIFOMode(uint8_t mode);
+  uint8_t     getFIFOTriggerInterruptPin();
+  void        setFIFOTriggerInterruptPin(uint8_t interrupt);
+  uint8_t     getFIFOSamples();
+  void        setFIFOSamples(uint8_t size);
+  
+  void        setLowPower(bool lp);
+
+  // FIFO_STATUS register
+  bool        getFIFOTriggerOccurred();
+  uint8_t     getFIFOLength();
 
  private:
   inline uint8_t  i2cread(void);

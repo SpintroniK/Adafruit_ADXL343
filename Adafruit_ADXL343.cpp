@@ -132,6 +132,40 @@ uint8_t Adafruit_ADXL343::readRegister(uint8_t reg) {
   }
 }
 
+bool Adafruit_ADXL343::readRegisterBit(uint8_t reg, uint8_t bitNumber)
+{
+  uint8_t b = readRegister(reg);
+  return b & (1 << bitNumber);
+}
+
+uint8_t Adafruit_ADXL343::readRegisterBits(uint8_t reg, uint8_t offset, uint8_t length)
+{
+  uint8_t b = readRegister(reg); 
+  uint8_t mask = ((1 << length) - 1) << (offset - length + 1);
+  b &= mask;
+  b >>= (offset - length + 1);
+  return b;
+}
+
+void Adafruit_ADXL343::writeBitToRegister(uint8_t reg, uint8_t bitNumber, uint8_t value)
+{
+  uint8_t b = readRegister(reg);
+  b = (value != 0) ? (b | (1 << bitNumber)) : (b & ~(1 << bitNumber));
+  writeRegister(reg, b);
+}
+
+
+void Adafruit_ADXL343::writeBitsToRegister(uint8_t reg, uint8_t offset, uint8_t length, uint8_t value)
+{
+  uint8_t b = readRegister(reg);
+  uint8_t mask = ((1 << length) - 1) << (offset - length + 1);
+  value <<= (offset - length + 1); // shift data into correct position
+  value &= mask; // zero all non-important bits in data
+  b &= ~(mask); // zero all important bits in existing byte
+  b |= value; // combine data with existing byte
+  writeRegister(reg, b);
+}
+
 /**************************************************************************/
 /*!
     @brief  Reads 16-bits from the specified register
@@ -252,6 +286,150 @@ int16_t Adafruit_ADXL343::getZ(void) {
   return read16(ADXL343_REG_DATAZ0);
 }
 
+
+void Adafruit_ADXL343::getXYZ(int16_t& x, int16_t& y, int16_t& z)
+{
+  _wire->beginTransmission(ADXL343_ADDRESS);
+  i2cwrite(ADXL343_REG_DATAX0);
+  _wire->endTransmission();
+  _wire->requestFrom(ADXL343_ADDRESS, 3*2);
+  x = (uint16_t)(i2cread() | (i2cread() << 8));
+  y = (uint16_t)(i2cread() | (i2cread() << 8));
+  z = (uint16_t)(i2cread() | (i2cread() << 8));
+}
+
+// FIFO_CTL register
+
+/** Get FIFO mode.
+ * These bits set the FIFO mode, as described in Table 22. That is:
+ *
+ * 0x0 = Bypass (FIFO is bypassed.)
+ *
+ * 0x1 = FIFO (FIFO collects up to 32 values and then stops collecting data,
+ *       collecting new data only when FIFO is not full.)
+ *
+ * 0x2 = Stream (FIFO holds the last 32 data values. When FIFO is full, the
+ *       oldest data is overwritten with newer data.)
+ *
+ * 0x3 = Trigger (When triggered by the trigger bit, FIFO holds the last data
+ *       samples before the trigger event and then continues to collect data 
+ *       until full. New data is collected only when FIFO is not full.)
+ *
+ * @return Curent FIFO mode
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_MODE_BIT
+ * @see ADXL345_FIFO_MODE_LENGTH
+ */
+uint8_t Adafruit_ADXL343::getFIFOMode() 
+{
+  return readRegisterBits(ADXL343_REG_FIFO_CTL, ADXL343_FIFO_MODE_BIT, ADXL343_FIFO_MODE_LENGTH);
+}
+/** Set FIFO mode.
+ * @param mode New FIFO mode
+ * @see getFIFOMode()
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_MODE_BIT
+ * @see ADXL345_FIFO_MODE_LENGTH
+ */
+void Adafruit_ADXL343::setFIFOMode(uint8_t mode) 
+{
+    writeBitsToRegister(ADXL343_REG_FIFO_CTL, ADXL343_FIFO_MODE_BIT, ADXL343_FIFO_MODE_LENGTH, mode);
+}
+/** Get FIFO trigger interrupt setting.
+ * A value of 0 in the trigger bit links the trigger event of trigger mode to
+ * INT1, and a value of 1 links the trigger event to INT2.
+ * @return Current FIFO trigger interrupt setting
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_TRIGGER_BIT
+ */
+uint8_t Adafruit_ADXL343::getFIFOTriggerInterruptPin() 
+{
+    return readRegister(ADXL343_FIFO_TRIGGER_BIT);
+}
+/** Set FIFO trigger interrupt pin setting.
+ * @param interrupt New FIFO trigger interrupt pin setting
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_TRIGGER_BIT
+ */
+void Adafruit_ADXL343::setFIFOTriggerInterruptPin(uint8_t interrupt) 
+{
+    writeBitToRegister(ADXL343_REG_FIFO_CTL, ADXL343_FIFO_TRIGGER_BIT, interrupt);
+}
+
+void Adafruit_ADXL343::setLowPower(bool lp)
+{
+    writeBitToRegister(ADXL343_REG_BW_RATE, 4, lp);
+}
+
+
+/** Get FIFO samples setting.
+ * The function of these bits depends on the FIFO mode selected (see Table 23).
+ * Entering a value of 0 in the samples bits immediately sets the watermark
+ * status bit in the INT_SOURCE register, regardless of which FIFO mode is
+ * selected. Undesirable operation may occur if a value of 0 is used for the
+ * samples bits when trigger mode is used.
+ *
+ * MODE    | EFFECT
+ * --------+-------------------------------------------------------------------
+ * Bypass  | None.
+ * FIFO    | FIFO entries needed to trigger a watermark interrupt.
+ * Stream  | FIFO entries needed to trigger a watermark interrupt.
+ * Trigger | Samples are retained in the FIFO buffer before a trigger event.
+ *
+ * @return Current FIFO samples setting
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_SAMPLES_BIT
+ * @see ADXL345_FIFO_SAMPLES_LENGTH
+ */
+uint8_t Adafruit_ADXL343::getFIFOSamples() 
+{
+  return readRegisterBits(ADXL343_REG_FIFO_CTL, ADXL343_FIFO_SAMPLES_BIT, ADXL343_FIFO_SAMPLES_LENGTH);
+}
+/** Set FIFO samples setting.
+ * @param size New FIFO samples setting (impact depends on FIFO mode setting)
+ * @see getFIFOSamples()
+ * @see getFIFOMode()
+ * @see ADXL345_RA_FIFO_CTL
+ * @see ADXL345_FIFO_SAMPLES_BIT
+ * @see ADXL345_FIFO_SAMPLES_LENGTH
+ */
+void Adafruit_ADXL343::setFIFOSamples(uint8_t size) 
+{
+    writeBitsToRegister(ADXL343_REG_FIFO_CTL, ADXL343_FIFO_SAMPLES_BIT, ADXL343_FIFO_SAMPLES_LENGTH, size);
+}
+
+// FIFO_STATUS register
+
+/** Get FIFO trigger occurred status.
+ * A 1 in the FIFO_TRIG bit corresponds to a trigger event occurring, and a 0
+ * means that a FIFO trigger event has not occurred.
+ * @return FIFO trigger occurred status
+ * @see ADXL345_RA_FIFO_STATUS
+ * @see ADXL345_FIFOSTAT_TRIGGER_BIT
+ */
+bool Adafruit_ADXL343::getFIFOTriggerOccurred() 
+{
+    return readRegisterBit(ADXL343_REG_FIFO_STATUS, ADXL343_FIFOSTAT_TRIGGER_BIT);
+}
+/** Get FIFO length.
+ * These bits report how many data values are stored in FIFO. Access to collect
+ * the data from FIFO is provided through the DATAX, DATAY, and DATAZ registers.
+ * FIFO reads must be done in burst or multiple-byte mode because each FIFO
+ * level is cleared after any read (single- or multiple-byte) of FIFO. FIFO
+ * stores a maximum of 32 entries, which equates to a maximum of 33 entries
+ * available at any given time because an additional entry is available at the
+ * output filter of the I2Cdev::
+ * @return Current FIFO length
+ * @see ADXL345_RA_FIFO_STATUS
+ * @see ADXL345_FIFOSTAT_LENGTH_BIT
+ * @see ADXL345_FIFOSTAT_LENGTH_LENGTH
+ */
+uint8_t Adafruit_ADXL343::getFIFOLength() 
+{
+    return readRegisterBits(ADXL343_REG_FIFO_STATUS, ADXL343_FIFOSTAT_LENGTH_BIT, ADXL343_FIFOSTAT_LENGTH_LENGTH);
+}
+
+
 /**************************************************************************/
 /*!
 *   @brief  Instantiates a new ADXL343 class
@@ -315,7 +493,10 @@ Adafruit_ADXL343::Adafruit_ADXL343(uint8_t clock, uint8_t miso, uint8_t mosi, ui
 bool Adafruit_ADXL343::begin() {
 
   if (_i2c)
+  {
     _wire->begin();
+    _wire->setClock(400000UL);
+  }
   else {
     pinMode(_cs, OUTPUT);
     pinMode(_clk, OUTPUT);
